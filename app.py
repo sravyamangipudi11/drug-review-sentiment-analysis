@@ -35,21 +35,44 @@ def review_clean(review):
     # Apply Snowball stemming
     stemmer = SnowballStemmer("english")
     lower = " ".join(stemmer.stem(word) for word in lower.split())
-    return lower
+    return lower if lower.strip() else "empty"  # Return "empty" if result is empty
 
 def create_features(df):
     """Create features for a single review input."""
-    df['sentiment'] = df['review_clean'].apply(lambda x: TextBlob(x).sentiment.polarity)
-    df['count_word'] = df['review_clean'].apply(lambda x: len(str(x).split()))
-    df['count_unique_word'] = df['review_clean'].apply(lambda x: len(set(str(x).split())))
-    df['count_letters'] = df['review_clean'].apply(lambda x: len(str(x)))
-    df['count_punctuations'] = df['review'].apply(lambda x: len([c for c in str(x) if c in string.punctuation]))
-    df['count_words_upper'] = df['review'].apply(lambda x: len([w for w in str(x).split() if w.isupper()]))
-    df['count_words_title'] = df['review'].apply(lambda x: len([w for w in str(x).split() if w.istitle()]))
-    df['count_stopwords'] = df['review'].apply(lambda x: len([w for w in str(x).lower().split() if w in stop_words]))
-    df['mean_word_len'] = df['review_clean'].apply(
-        lambda x: np.mean([len(w) for w in str(x).split()]) if len(str(x).split()) > 0 else 0
+    # Handle empty cleaned review
+    df['sentiment'] = df['review_clean'].apply(
+        lambda x: TextBlob(x).sentiment.polarity if x != "empty" else 0.0
     )
+    df['count_word'] = df['review_clean'].apply(
+        lambda x: len(str(x).split()) if x != "empty" else 0
+    )
+    df['count_unique_word'] = df['review_clean'].apply(
+        lambda x: len(set(str(x).split())) if x != "empty" else 0
+    )
+    df['count_letters'] = df['review_clean'].apply(
+        lambda x: len(str(x)) if x != "empty" else 0
+    )
+    df['count_punctuations'] = df['review'].apply(
+        lambda x: len([c for c in str(x) if c in string.punctuation])
+    )
+    df['count_words_upper'] = df['review'].apply(
+        lambda x: len([w for w in str(x).split() if w.isupper()])
+    )
+    df['count_words_title'] = df['review'].apply(
+        lambda x: len([w for w in str(x).split() if w.istitle()])
+    )
+    df['count_stopwords'] = df['review'].apply(
+        lambda x: len([w for w in str(x).lower().split() if w in stop_words])
+    )
+    df['mean_word_len'] = df['review_clean'].apply(
+        lambda x: np.mean([len(w) for w in str(x).split()]) if x != "empty" and len(str(x).split()) > 0 else 0.0
+    )
+    # Ensure numeric types
+    numeric_cols = ['sentiment', 'count_word', 'count_unique_word', 'count_letters',
+                    'count_punctuations', 'count_words_upper', 'count_words_title',
+                    'count_stopwords', 'mean_word_len']
+    for col in numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
     return df
 
 # -----------------------------
@@ -133,21 +156,29 @@ if st.button("Predict Sentiment"):
     df['condition_freq'] = cond_freq_map.get(condition_input, 0)
     df['condition_mean_sentiment'] = cond_mean_sentiment_map.get(condition_input, 0)
     
-    # Feature order (aligned with notebook)
+    # Feature order (aligned with notebook, removed duplicate 'sentiment')
     feature_cols = [
-        'usefulCount', 'sentiment', 'day', 'month', 'Year', 'sentiment',
+        'usefulCount', 'sentiment', 'day', 'month', 'Year',
         'count_word', 'count_unique_word', 'count_letters', 'count_punctuations',
         'count_words_upper', 'count_words_title', 'count_stopwords', 'mean_word_len',
         'drugName_LE', 'drugName_freq', 'drugName_mean_sentiment',
         'condition_LE', 'condition_freq', 'condition_mean_sentiment'
     ]
     
-    # Ensure all features are present
+    # Ensure all features are present and numeric
     try:
         X = df[feature_cols]
+        # Convert to numeric and handle NaN
+        X = X.astype(float)
+        X = X.fillna(0.0)
     except KeyError as e:
         st.error(f"Missing feature in input data: {str(e)}")
         st.write("Available columns:", df.columns.tolist())
+        st.stop()
+    except ValueError as e:
+        st.error(f"Non-numeric data in features: {str(e)}")
+        st.write("Feature types:", X.dtypes)
+        st.write("Feature values:", X)
         st.stop()
     
     # Prediction
@@ -167,7 +198,9 @@ if st.button("Predict Sentiment"):
         st.info(f"Confidence: {confidence:.2f}%")
         
         # Debug: Display input features
-        st.write("Input features:", df[feature_cols])
+        st.write("Input features:", X)
     except Exception as e:
         st.error(f"Error during prediction: {str(e)}")
+        st.write("Feature types:", X.dtypes)
+        st.write("Feature values:", X)
         st.stop()
