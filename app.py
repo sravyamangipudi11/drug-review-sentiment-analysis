@@ -133,4 +133,4 @@ if st.button("Predict Sentiment"):
     
     sentiment_label = "Positive" if pred[0] == 1 else "Negative"
     st.success(f"Predicted Sentiment: {sentiment_label}")
-    st.info(f"Confidence: {pred_prob[0][pred[0]]*100:.2f}%")
+    st.info(f"Confidence: {np.max(pred_prob[0])*100:.2f}%")
